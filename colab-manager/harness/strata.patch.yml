@@ -1,0 +1,31 @@
+- id: llm-pi-ai
+  config:
+    providers:
+      colab-strata:
+        displayName: Colab Strata
+        api: openai-completions
+        baseURL: http://127.0.0.1:8080/v1
+        apiKeyEnv: STRATA_API_KEY
+        models:
+          - id: qwen3.8-flash-next-iq3_s
+            name: qwen3.8-flash-next-iq3_s (Colab)
+            contextWindow: 262144
+            maxTokens: 32768
+            input: [ text, image ]
+            reasoningEfforts: false
+            compat:
+              supportsDeveloperRole: false
+              supportsReasoningEffort: false
+- id: agent-default-model
+  config:
+    provider: colab-strata
+    model: qwen3.8-flash-next-iq3_s
+- id: compaction-basic
+  config:
+    modelPolicies:
+      - provider: colab-strata
+        model: qwen3.8-flash-next-iq3_s
+        thresholdRatio: 0.4
+        headroomTokens: 8192
+        maxTokens: 4096
+        retainTokens: 2048

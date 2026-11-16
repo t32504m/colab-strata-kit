@@ -1,0 +1,12 @@
+# 実行時の状態・ログ・一時ファイル（イベントログやリースを含む）
+state/
+# 秘密の値（ユーザーが書く）
+config.local.env
+*.env
+# 変更前の手動バックアップ（履歴は git で残す）
+*.before-*
+__pycache__/
+test-guardian-*/
+test-config-*/
+# この PC だけの設定（install.ps1 が書く）
+local.settings.json

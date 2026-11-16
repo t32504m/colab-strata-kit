@@ -1,0 +1,5 @@
+.state/
+config.local.env
+docs/
+config.local.env.*
+__pycache__/

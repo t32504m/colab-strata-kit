@@ -1,0 +1,25 @@
+# DeepSeek Harness（デスクトップ版）を Colab の Strata につなぐ設定。
+# install.ps1 が %USERPROFILE%\.dsh\profiles\desktop\cordis.patch.yml の末尾に足す（llm-pi-ai がまだ無いときだけ）。
+# モデル名と文脈の長さは、Manager が「開く」ときに、動いている Strata に合わせて書き換える。
+- id: llm-pi-ai
+  config:
+    providers:
+      colab-strata:
+        displayName: Colab Strata
+        api: openai-completions
+        baseURL: http://127.0.0.1:8080/v1
+        apiKeyEnv: STRATA_API_KEY
+        models:
+          - id: qwen3.8-flash-next-iq3_s
+            name: qwen3.8-flash-next-iq3_s (Colab)
+            contextWindow: 262144
+            maxTokens: 32768
+            input: [ text, image ]
+            reasoningEfforts: false
+            compat:
+              supportsDeveloperRole: false
+              supportsReasoningEffort: false
+- id: agent-default-model
+  config:
+    provider: colab-strata
+    model: qwen3.8-flash-next-iq3_s
