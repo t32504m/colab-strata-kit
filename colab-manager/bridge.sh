@@ -8,6 +8,11 @@ source "$BASE/lib/common.sh"
 [[ "$COLAB_SESSION" == strata ]] || { echo 'Unexpected session; refusing.' >&2; exit 2; }
 export NO_COLOR=1
 export TERM=dumb
+# Manager から呼ばれると画面が無く、colab（rich）が幅を 1 と見て、エラーを1文字ずつ改行して書く（2026-11-17）
+export COLUMNS=200 LINES=50
+# A100 が空いていない（assign が Service Unavailable）ときに、待ってやり直す回数と間隔。ランタイムは作られないので CU はかからない
+ASSIGN_TRIES="${ASSIGN_TRIES:-10}"
+ASSIGN_WAIT_SEC="${ASSIGN_WAIT_SEC:-60}"
 mkdir -p "$APP/state"
 STOP="$APP/state/stop.request"
 PHASE="$APP/state/phase"
@@ -129,8 +134,25 @@ case "${1:-}" in
       phase allocating
       args=(-s strata --gpu A100)
       [[ "$HIGH_MEM" == 1 ]] && args+=(--high-mem)
-      audit colab new "${args[@]}"
-      colab new "${args[@]}"
+      for try in $(seq 1 "$ASSIGN_TRIES"); do
+        audit colab new "${args[@]}"
+        newlog="$(mktemp)"
+        set +e; colab new "${args[@]}" 2>&1 | tee "$newlog"; rc=${PIPESTATUS[0]}; set -e
+        if [[ $rc == 0 ]]; then rm -f "$newlog"; break; fi
+        busy=0; tr -d '
+' < "$newlog" | grep -Eq 'Service Unavailable|503|Too Many Requests|429' && busy=1
+        rm -f "$newlog"
+        [[ $busy == 1 && $try -lt $ASSIGN_TRIES ]] || exit "$rc"
+        # 割り当てが本当に無いことを確かめてから待つ（作られていれば、そのまま使う）
+        s="$(state)"
+        [[ "$s" == present ]] && break
+        [[ "$s" == absent ]] || { echo 'Cannot establish runtime state.' >&2; exit 3; }
+        echo "[manager] A100 is busy on Colab (Service Unavailable). Waiting ${ASSIGN_WAIT_SEC}s, then retry $((try+1))/$ASSIGN_TRIES (no runtime, no CU)."
+        phase waiting-gpu
+        for ((w=0; w<ASSIGN_WAIT_SEC; w+=5)); do cancel_check; sleep 5; done
+        cancel_check
+        phase allocating
+      done
     fi
     cancel_check
     phase ssh

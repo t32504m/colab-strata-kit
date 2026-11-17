@@ -190,7 +190,7 @@ $timer.Add_Tick({
     $statusText=Get-JobText $script:statusJob
     $s=Parse-Status $statusText
     if(!$stopping){$script:lastState=$s.Runtime}
-    $message=if($statusText -match 'MANAGER_AUTH_REQUIRED'){'Colab CLI の認証が必要です。キットのフォルダの install.cmd を実行してください（済んでいる手順は飛ばされます）。'}
+    $message=if($statusText -match 'MANAGER_AUTH_REQUIRED'){if(Test-Path (Join-Path $script:KitRoot 'install.cmd')){'Colab CLI の認証が必要です。キットのフォルダの install.cmd を実行してください（済んでいる手順は飛ばされます）。'}else{'Colab CLI の認証が必要です。WSL の Ubuntu で colab status -s strata を実行してログインしてください。'}}
       elseif($statusText -match 'MANAGER_STATUS_TIMEOUT'){'Colab の状態確認がタイムアウトしました。'}
       elseif($s.Runtime -eq 'unknown'){"Colab の状態を確認できませんでした。詳細ログ $($script:statusJob.Err)"}
       elseif($s.Runtime -eq 'present'){'Colab のランタイムは稼働中です。'}
@@ -228,7 +228,7 @@ $timer.Add_Tick({
     $statusLabel.Text=if($script:ready){'準備完了 — '+$script:lastHealth.model+' / '+$script:lastHealth.max_context+' ctx'}elseif($script:lastState -eq 'absent'){'Colabは停止中'}elseif($script:lastState -eq 'present'){'Colabは稼働中 — モデル準備中、またはトンネル未接続'}else{'状態を確認できません — 停止済みとは限りません'}
     if(!$script:ready -and $script:operation -and !$script:operation.Process.HasExited){
       $phase=try{(Get-Content (Join-Path $StateRoot 'phase') -Raw -ErrorAction Stop).Trim()}catch{'checking'}
-      $phaseNames=@{checking='既存ランタイムを確認中';allocating='A100を割り当て中';ssh='SSH接続を準備中';preparing='モデルを準備中';ready='Colab準備完了 — Windows側APIへの接続待ち';cancelling='起動の取り消し中'}
+      $phaseNames=@{checking='既存ランタイムを確認中';allocating='A100を割り当て中';'waiting-gpu'='A100の空き待ち（Colab側が満杯。自動でやり直す。CUはかからない）';ssh='SSH接続を準備中';preparing='モデルを準備中';ready='Colab準備完了 — Windows側APIへの接続待ち';cancelling='起動の取り消し中'}
       $phaseText=if($phaseNames.ContainsKey($phase)){$phaseNames[$phase]}else{$phase}
       if($phase -eq 'preparing'){$phaseText=Get-StartupProgress (Get-JobText $script:operation)}
       $statusLabel.Text='起動処理中 — '+$phaseText

@@ -33,7 +33,11 @@ stop)
   n=$(cat "$TEST_ROOT/attempts" 2>/dev/null || echo 0)
   n=$((n+1)); echo "$n" > "$TEST_ROOT/attempts"
   if [[ "$MODE" != retry || "$n" -ge 2 ]]; then rm -f "$TEST_ROOT/active"; fi;;
-new) touch "$TEST_ROOT/active";;
+new)
+  n=$(cat "$TEST_ROOT/new-calls" 2>/dev/null || echo 0); n=$((n+1)); echo "$n" > "$TEST_ROOT/new-calls"
+  if [[ "$MODE" == busy && "$n" -lt 3 ]]; then echo 'ColabRequestError: Failed to issue request POST .../assign?accelerator=A100: Service Unavailable' >&2; exit 1; fi
+  if [[ "$MODE" == denied ]]; then echo 'ColabRequestError: Forbidden' >&2; exit 1; fi
+  touch "$TEST_ROOT/active";;
 usage) touch "$TEST_ROOT/usage-called"; echo 'Current balance: 100.00 compute units';;
 esac
 '''
@@ -65,10 +69,20 @@ esac
     r = run('reconnect','normal')  # runtime exists; SSH fails
     assert r.returncode != 0 and (root/'active').exists(), r
     assert '[manager] stopped' not in r.stdout and not (root/'attempts').exists(), r
+    # A100 が空いていない（Service Unavailable）ときは待ってやり直す。ほかの失敗はやり直さない
+    (root/'active').unlink(missing_ok=True)
+    (root/'new-calls').unlink(missing_ok=True)
+    r = run('start','busy')  # 2 回空きが無く、3 回目で割り当て。その後 SSH が通らず止める
+    assert int((root/'new-calls').read_text()) == 3 and 'retry 3/' in r.stdout, r
+    assert '[manager] stopped' in r.stdout and not (root/'active').exists(), r
+    (root/'new-calls').unlink()
+    r = run('start','denied')
+    assert r.returncode != 0 and int((root/'new-calls').read_text()) == 1 and 'retry' not in r.stdout, r
     # 認証が要るときは、状態を unknown とし、MANAGER_AUTH_REQUIRED を出し、CU の照会はしない
     r = run('status','auth')
     assert 'MANAGER_STATE=unknown' in r.stdout and 'MANAGER_AUTH_REQUIRED' in r.stderr, r
     assert not (root/'usage-called').exists(), r
+    (root/'active').touch()
     r = run('status','normal')
     assert 'MANAGER_STATE=present' in r.stdout and (root/'usage-called').exists(), r
-    print('PASS: failed stop retry, unknown is not absent, failed startup cleans up, failed reconnect keeps the runtime, auth-required status (fake CLI only)')
+    print('PASS: failed stop retry, unknown is not absent, failed startup cleans up, failed reconnect keeps the runtime, busy A100 retried, auth-required status (fake CLI only)')

@@ -236,6 +236,7 @@ _m sw_key_exists   "既存の ~/.ssh/id_ed25519 を使います。" "Using the e
 _m sk_title        "== colab CLI のログイン情報の置き場所（キーリングを聞かれないようにする） ==" "== Where colab CLI keeps its sign-in token (no keyring prompts) =="
 _m sk_no_colab     "colab CLI が見つかりません。先に ./setup-wsl.sh を実行してください。" "colab CLI not found. Run ./setup-wsl.sh first."
 _m sk_other_cfg    "%s に別のキーリングの設定があるので、変えずに残します。" "%s selects another keyring; leaving it unchanged."
+_m sk_other_colab  "別の colab（%s）が使われていて、キーリングの切り替えでログインを読めなくなるので、何も変えません。" "Another colab (%s) is in use and would lose its sign-in if the keyring were switched; changing nothing."
 _m sk_ok           "トークンは ~/.local/share/python_keyring/ に置かれます（キーリングは聞かれません）。" "The token is kept in ~/.local/share/python_keyring/ (no keyring prompts)."
 _m sk_ng           "キーリングの切り替えができませんでした（今の設定: %s）。" "Could not switch the keyring (current: %s)."
 _m sw_done \

@@ -21,6 +21,23 @@ if [[ ! -x "$py" ]]; then
     exit 1
 fi
 
+# keyringrc.cfg はこのユーザーのすべての Python に効く。keyrings.alt の無い別の colab（config.local.env の PATH で
+# 別の venv を使っている PC など）があると、そちらがトークンを読めなくなる（2026-11-17、元の PC の Manager が
+# 認証を求めて止まった）。そういう colab が1つでもあれば、何も変えずに止まる。
+used="$(cd "$(dirname "$0")" && bash -c 'source lib/common.sh >/dev/null 2>&1; command -v colab' </dev/null 2>/dev/null || true)"
+others=()
+while IFS= read -r c; do
+    [[ -n "$c" && -f "$c" ]] || continue
+    [[ "$(readlink -f "$c")" == "$(readlink -f "$(uv tool dir)/google-colab-cli/bin/colab")" ]] && continue
+    cpy="$(head -1 "$c" | sed -n 's/^#! *//p' | awk '{print $1}')"
+    [[ "$(readlink -f "$cpy" 2>/dev/null)" == "$(readlink -f "$py")" ]] && continue
+    "$cpy" -c 'import keyrings.alt' 2>/dev/null || others+=("$c")
+done < <({ echo "$used"; type -a -P colab 2>/dev/null; } | sort -u)
+if (( ${#others[@]} )); then
+    msg sk_other_colab "${others[*]}"; echo
+    exit 0
+fi
+
 if ! "$py" -c 'import keyrings.alt' 2>/dev/null; then
     # --with は uv が覚えるので、この後の uv tool upgrade でも残る
     uv tool install --force google-colab-cli --with keyrings.alt
