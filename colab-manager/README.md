@@ -1,5 +1,7 @@
 # Colab Manager
 
+初めて使う場合は、先に [キット全体の導入手順](../README.md) に従ってダウンロード・配置と `install.cmd` による初期設定を済ませてください。このページは導入後の操作と仕組みを説明します。
+
 WindowsのPowerShell 7 + Windows Formsで動く、Colab / Strata管理アプリです。
 キットのフォルダ（以下 `<キット>`）の `Colab Manager.lnk` をダブルクリックして開きます（`install.cmd` が作ります）。
 開くと状態を確認し、Colabランタイムが無ければ前回の起動設定でそのまま起動します（GPUを割り当て、CUを消費します）。既にランタイムがある場合は起動せず、状態/CU/APIの照会と停止監視だけを行います。
