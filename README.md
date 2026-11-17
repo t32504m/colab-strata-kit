@@ -17,40 +17,116 @@ Google Colab の GPU（A100）で Strata を動かし、Qwen3.8 を手元の PC 
 
 ## 1. 必要なものを用意する
 
-- Windows 10 / 11 とインターネット接続。
-- Google Colab で A100 を利用できるアカウントと、コンピューティング ユニット（CU）。必要な GPU を割り当てられるかは、その時点の空き状況にもよります。稼働中はモデルの準備時間も含めて CU を消費します。約 6.7 CU/時は過去の参考値です。
-- WSL 2 の Ubuntu。まだ入っていなければ、PowerShell を右クリックして「管理者として実行」で開き、次を実行します。
+### まず、インストール状況とバージョンを確認する
 
-  ```powershell
-  wsl --install -d Ubuntu
-  ```
+次の確認コマンドは **Windows の PowerShell** で実行します。確認できたものを入れ直す必要はありません。
 
-  再起動を求められたら再起動し、スタートメニューから Ubuntu を開いて、Linux 用のユーザー名とパスワードを設定します。このパスワードは後で `sudo` に使います。Windows の PIN とは別です。既に Ubuntu を使っている場合は、入れ直す必要はありません。`wsl -l -v` で名前と VERSION が `2` であることを確認できます。
+| 確認するもの | このキットでの条件・導入の目安 |
+|---|---|
+| Windows | Windows 10 / 11。以下の `wsl --install` を使う場合は Windows 10 バージョン2004（ビルド19041）以降、または Windows 11 が前提。これは WSL の導入条件で、キットの全バージョンでの動作検証を意味しません |
+| WSL・Ubuntu | **WSL 2** 上の Ubuntu。この手順で新しく入れる場合は **Ubuntu 24.04 LTS** を指定します。既存の Ubuntu の最小対応バージョンは未確認です |
+| PowerShell | Manager は **PowerShell 7 系**で使います。導入は7系の最新安定版を推奨。Windows 標準の Windows PowerShell 5.1 とは別です。委譲スクリプトは `#requires -Version 7` を指定しています |
+| Colab アカウント | A100 を利用でき、CU が残っていること。GPU の割り当ては空き状況にもよります。PC 内のコマンドでは権限や残量を確認できないので、Colab のアカウントで確認してください |
 
-- PowerShell 7。まだ入っていなければ、Windows の PowerShell で次を実行します。
+Windows の種類・ビルド・CPUアーキテクチャ：
 
-  ```powershell
-  winget install --id Microsoft.PowerShell --source winget
-  ```
+```powershell
+Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture
+```
 
-  以降、PowerShell 7 を開くときはスタートメニューで「PowerShell 7」を選びます。
+WSL の導入状態と Ubuntu の一覧：
+
+```powershell
+wsl --version
+wsl --status
+wsl -l -v
+```
+
+`wsl --version` は WSL 本体の版です。古い WSL でこのオプションが使えない場合は、`--status` と `-l -v` の出力を確認してください。
+
+`wsl -l -v` の一覧に使う Ubuntu があり、**VERSION が `2`** なら WSL 2 です。VERSION は Ubuntu の版ではありません。Ubuntu 自体の版は、一覧の名前に合わせて次で確認します（例は `Ubuntu`）。
+
+```powershell
+wsl -d Ubuntu -e cat /etc/os-release
+```
+
+出力の `PRETTY_NAME` または `VERSION_ID` を確認します。名前が `Ubuntu-24.04` なら、コマンド中の `Ubuntu` を `Ubuntu-24.04` に置き換えてください。
+
+PowerShell 7 の導入状況と版：
+
+```powershell
+Get-Command pwsh -ErrorAction SilentlyContinue
+pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()'
+```
+
+`7.x.x` と表示されることを確認します。現在開いている画面の版だけを調べる `$PSVersionTable` では、Windows PowerShell 5.1 と表示されることがあります。`pwsh` が見つからなければ、次の手順で PowerShell 7 を入れてください。
+
+### 不足しているものを入れる
+
+WSL・Ubuntu が無い場合は、PowerShell を右クリックして「管理者として実行」で開き、次を実行します。
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+再起動を求められたら再起動し、スタートメニューから Ubuntu 24.04 を開いて、Linux 用のユーザー名とパスワードを設定します。このパスワードは後で `sudo` に使います。Windows の PIN とは別です。既に Ubuntu を使っている場合は入れ直さず、上のコマンドで状態を確認してください。
+
+PowerShell 7 が無い場合は、Windows の PowerShell で次を実行します。
+
+```powershell
+winget --version
+winget install --id Microsoft.PowerShell --source winget
+```
+
+`winget` 自体が見つからない場合は、Microsoft Store の「アプリ インストーラー」をインストール・更新するか、[PowerShell の公式インストール手順](https://learn.microsoft.com/ja-jp/powershell/scripting/install/installing-powershell-on-windows)を参照してください。インストール後は PowerShell を開き直し、上の `pwsh` の確認コマンドを実行します。
+
+ssh・uv・Colab CLI は手順3の `install.cmd` が **Ubuntu 側**に用意します。Windows 側に個別に入れる必要はありません。Colab CLI のトークン保存処理は0.8以降を想定しています。セットアップは最新版を導入・更新し、版は固定していません。WSL 本体の最小パッケージ版、uv の最小版、Ubuntu の最小対応版については未検証です。
+
+導入後に uv と Colab CLI の実際の版を確認したい場合は、Windows の PowerShell で次を実行します。`Ubuntu-24.04` は自分の WSL の名前に合わせて変更してください。`uv tool list` に `google-colab-cli v...` が表示されます。以下は uv の通常のインストール先（`~/.local/bin/uv`）を使う例です。別の場所に導入済みの場合は実際のパスに合わせてください。
+
+```powershell
+wsl -d Ubuntu-24.04 -e bash -lc '~/.local/bin/uv --version'
+wsl -d Ubuntu-24.04 -e bash -lc '~/.local/bin/uv tool list'
+```
+
+ランタイムの稼働中はモデルの準備時間も含めて CU を消費します。約 6.7 CU/時は過去の参考値です。
 
 ### 任意：Hugging Face のトークン（起動前の設定を推奨）
 
-トークンなしでも動きますが、**初回起動の前に用意しておくことをおすすめします**。開発者の環境では、トークンなしだと準備完了まで20分以上、トークンありだと10分前後が目安です。モデル・回線・キャッシュの状態などによって時間は変わります。
+トークンなしでも動きますが、**初回起動前に、キャッシュの保存までできるトークンを用意することをおすすめします**。このキットは変換済みMTPデータ（約0.8 GB）を Hugging Face に保存し、次回の起動で再利用できます。
+
+| 権限・状態 | できること |
+|---|---|
+| Read（読み取り） | モデルの取得と、アクセス権がある保存済みキャッシュの読み込み。新しいキャッシュは保存できない |
+| Write（書き込み） | 上記に加えて、キャッシュ用の非公開リポジトリを作り、変換済みデータを保存できる |
+| 保存済みキャッシュがある次回起動 | 対応するデータを復元し、MTP用の取得・変換を省ける。読み込みだけなら Read でも使える |
+
+**Write に変えるだけで、初回のダウンロードが速くなるわけではありません。** 最初は変換して保存し、保存に成功した後の起動で再利用します。モデル本体すべてをキャッシュする仕組みではありません。起動時間はキャッシュ・モデル・回線などで変わり、Read と Write の条件をそろえた実測は未確認です。
 
 1. [Hugging Face](https://huggingface.co/) のアカウントを作成、またはログインします。
 2. [Access Tokens の設定画面](https://huggingface.co/settings/tokens)で **Create new token** を選びます。
-3. モデル取得用なら **Read（読み取り）** 権限のトークンを作成します。変換済みデータのキャッシュを Hugging Face に保存する場合の書き込み権限は、下の「設定」で説明しています。
+3. この手順の既定設定でキャッシュの作成・保存まで使う場合は、**Write（書き込み）** 権限のトークンを作成します。モデル取得と既存キャッシュの読み込みだけなら Read で足ります。
 4. 発行されたトークンを安全に保管します。手順3で `install.cmd` を実行した後、作成された `strata-colab-cli\config.local.env` の `HF_TOKEN=` に設定します。書き込むまでは Colab Manager を開かないでください。
 
 トークンはパスワードと同様に扱い、チャット・スクリーンショット・共有するファイルに載せないでください。
 
 ### 任意：DeepSeek Harness（チャット・コード生成の画面）
 
-使う場合は、公式の配布元から Windows 版を入れておきます。先に入れてから `install.cmd` を実行すると、Colab の Strata につなぐ設定が追加されます。後から入れた場合は、`install.cmd` をもう一度実行してください。
+使う場合は、公式の配布元から Windows 版を入れておきます。対応する最小バージョンは、このリポジトリでは指定・検証していません。先に入れてから `install.cmd` を実行すると、Colab の Strata につなぐ設定が追加されます。後から入れた場合は、`install.cmd` をもう一度実行してください。
 
 DeepSeek Harness を入れない場合は、付属の Strata WebUI を使えます。委譲の仕組みも使う場合は、[Git for Windows](https://gitforwindows.org/) を別途用意してください。キットのダウンロード自体には Git は不要です。
+
+通常のインストール先にあるかと、実行ファイルのバージョン情報を Windows の PowerShell で確認できます。
+
+```powershell
+$harnessExe = Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\DeepSeek Harness.exe'
+Test-Path -LiteralPath $harnessExe
+if (Test-Path -LiteralPath $harnessExe) { (Get-Item -LiteralPath $harnessExe).VersionInfo | Select-Object ProductVersion, FileVersion }
+```
+
+`True` なら、このキットが探す場所に実行ファイルがあります。バージョン欄が空の場合は、Harness の設定・バージョン情報画面も確認してください。`False` なら、その場所にはありません。別の場所にインストールしている場合、このキットの自動検出の対象外です。
+
+委譲も使う場合の Git は、`git --version` で導入状況と版を確認できます。Git の最小対応版は未指定です。
 
 ## 2. キットをダウンロードして置く
 
@@ -121,12 +197,12 @@ colab-strata-kit
 2. `HF_TOKEN=` の行を探し、= の直後に発行されたトークンを貼り付けて保存します。変更するのは `config.local.env` で、雛形の `config.local.example.env` ではありません。
 3. 保存してから、次の手順で Colab Manager を開きます。
 
-設定しなくても起動できますが、開発者の環境ではトークンなしで20分以上、ありで10分前後かかります。
+既定は `MTP_CACHE_REPO=auto` です。`MTP_CACHE_TOKEN` が空なら `HF_TOKEN` をキャッシュにも使うため、`HF_TOKEN` に Write のトークンを設定すれば保存まで使えます。モデル取得用と分ける場合は、`HF_TOKEN` に Read、`MTP_CACHE_TOKEN` にキャッシュ保存先へ書き込めるトークンを設定します。保存先は通常 `<トークンのユーザー名>/strata-colab-cache` の非公開リポジトリです。
 
 ## 4. 起動して使い、停止する
 
 1. デスクトップ、またはキットのフォルダにある **「Colab Manager」** をダブルクリックします。**開くだけで Colab ランタイムへの接続と Strata の起動が自動で進みます。** ランタイムが無ければ新しく起動し、既に稼働していればその状態を確認・監視します。通常は、追加で「起動」を押す必要はありません。ランタイムの稼働中は CU を消費します。
-2. モデルの取得・準備が終わるまで待ちます。開発者の環境での目安は **HFトークンありで10分前後、なしで20分以上**です。画面の進捗を確認してください。
+2. モデルの取得・準備が終わるまで待ちます。保存済みMTPキャッシュを再利用できる場合は、取得・変換の一部を省けます。初回やキャッシュがない場合は数十分かかることがあります。画面の進捗を確認してください。
 3. **「準備完了」** と表示されたら使えます。DeepSeek Harness を入れていない場合は、「起動後に開く」を **Strata WebUI** にして「選択した画面を開く」を押します。次回から自動で開くかは「準備できたら自動で開く」で選べます。
 4. 使い終わったら **Colab Manager のウィンドウを「×」で閉じます**。Manager はランタイムの停止・切断を行い、停止を確認してから終了します。停止確認のメッセージが出たら OK を押してください。WebUI や Harness を閉じるだけでは Colab は停止しません。
 
@@ -157,14 +233,14 @@ Manager の画面で、モデル（量子化）、コンテキスト長、起動
 
 | 項目 | 既定 | 意味 |
 |---|---|---|
-| `HF_TOKEN` | 空 | Hugging Face のトークン。書くとモデルの取得が速く・安定する。[Hugging Face の設定画面](https://huggingface.co/settings/tokens)で作る（モデルの取得は読み取り権限で足りる）。**秘密の値なので人に見せない** |
+| `HF_TOKEN` | 空 | Hugging Face のトークン。書くとモデルの取得が速く・安定する。[Hugging Face の設定画面](https://huggingface.co/settings/tokens)で作る（取得は Read、キャッシュの新規保存も使う場合は Write）。**秘密の値なので人に見せない** |
 | `MTP_CACHE_REPO` | `auto` | 変換済みのデータ（約 0.8 GB）を Hugging Face に非公開で保存し、2回目以降の起動を速くする。`auto` なら `<トークンのユーザー名>/strata-colab-cache`。使わないなら空にする |
 | `MTP_CACHE_TOKEN` | 空 | 上の保存に使う、書き込み権限のあるトークン。空なら `HF_TOKEN` を使う（そのときは `HF_TOKEN` に書き込み権限が要る） |
 | `HIGH_MEM` | `0` | `1` で High-memory のランタイム（Colab Pro / Pro+ が必要） |
 | `ON_GPU_MISMATCH` | `stop` | A100 以外が割り当てられたら止める（CU の無駄を防ぐ） |
 | `CONTEXT` / `MODEL` / `STRATA_EXTRA_ARGS` | | Manager の画面が書き換える。手で変えなくてよい |
 
-トークンを書いたら、Manager で起動し直すと使われる。トークンなしでも動きますが、起動前の設定をおすすめします。開発者の環境では、なしで20分以上、ありで10分前後が目安です。
+トークンを書いたら、Manager で起動し直すと使われる。キャッシュの保存には書き込み権限が必要で、保存成功後の起動で再利用できます。
 
 ### DeepSeek Harness を使う場合（任意）
 
