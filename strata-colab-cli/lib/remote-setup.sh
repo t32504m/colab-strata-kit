@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Colab VM 上で実行される。手元の lib/common.sh が lib/messages.sh と一緒に ssh 経由で標準入力から流し込む。
-# 受け取る変数: STRATA_REPO REMOTE_DIR DATA_DIR MODEL CONTEXT REMOTE_PORT STRATA_EXTRA_ARGS REMOTE_LOG
+# 受け取る変数: STRATA_REPO STRATA_REF REMOTE_DIR DATA_DIR MODEL CONTEXT REMOTE_PORT STRATA_EXTRA_ARGS REMOTE_LOG
 #               MODEL_FAMILY MODEL_REPO MODEL_FILES MODEL_REVISION
 #               FORCE_RESTART: 1 なら進行中でも止めてやり直す。2 なら起動済みでも止めて、新しい設定で起動し直す
 #               MSG_LANG: 表示する言語。ja か en
@@ -136,9 +136,22 @@ fi
 # ---- Strata の取得 ----
 if [[ ! -d "$REMOTE_DIR/.git" ]]; then
     rmsg r_cloning "$STRATA_REPO"
-    git clone --depth 1 "$STRATA_REPO" "$REMOTE_DIR"
+    if [[ -n "${STRATA_REF:-}" ]]; then
+        # 決めた版だけを取る（GitHub はコミットを名指しで浅く取れる）
+        git init -q "$REMOTE_DIR"
+        git -C "$REMOTE_DIR" remote add origin "$STRATA_REPO"
+        git -C "$REMOTE_DIR" fetch -q --depth 1 origin "$STRATA_REF"
+        git -C "$REMOTE_DIR" checkout -q FETCH_HEAD
+    else
+        git clone --depth 1 "$STRATA_REPO" "$REMOTE_DIR"
+    fi
     tl clone-done
 fi
+# setup.py の置き場。0.2.16（2026-11-18）から terminal/ に移り、.venv・設定・起動スクリプト・エンジンもそこに置かれる
+# （本家の setup.sh も terminal/ に移ってから setup.py を動かす）。古い版はリポジトリの直下
+STRATA_HOME="$REMOTE_DIR"
+[[ -f "$REMOTE_DIR/terminal/setup.py" ]] && STRATA_HOME="$REMOTE_DIR/terminal"
+tl strata-layout home "$STRATA_HOME"
 # どのコミットの Strata で動いたかを、時刻の記録と一緒に残す
 tl strata-commit commit "$(git -C "$REMOTE_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
 
@@ -190,7 +203,7 @@ tl python-ready nopip "$STRATA_VENV_NOPIP"
 
 # ---- 保存済み設定のポート ----
 # Strata は保存済みの設定 strata-<model>.json のポートで起動するので、REMOTE_PORT に合わせる。
-for f in "$REMOTE_DIR"/strata-*.json; do
+for f in "$STRATA_HOME"/strata-*.json; do
     [[ -f "$f" ]] || continue
     old_ports="$("$PY" - "$f" "$REMOTE_PORT" <<'PYEOF'
 import json, sys
@@ -353,7 +366,8 @@ to_setup_sh() {
   if [ "${STRATA_VENV_NOPIP:-0}" = 1 ]; then         # setup.sh makes its venv with ensurepip
     apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y python3-venv >/dev/null 2>&1
   fi
-  exec ./setup.sh "$@"
+  # 0.2.16 からは terminal/ で動いているので、本家の setup.sh は一つ上にある（setup.sh が自分で terminal/ に移る）
+  if [ -x ./setup.sh ]; then exec ./setup.sh "$@"; else exec ../setup.sh "$@"; fi
 }
 # .venv, engine, engine-feed (not in the repository) on the VM's memory: while the shards fill the disk, ordinary writes wait
 # (pip's unpacking took 103 s). Only when the memory folder has 8 GB free; a link left from an earlier run gets its folder again.
@@ -456,7 +470,7 @@ elif [[ "${DRIVE_CACHE:-0}" == 1 && -n "${DRIVE_TOKEN:-}" ]]; then
 fi
 tl tmux-launch
 
-cmd="export PATH=$(printf '%q' "$PY_SHIM_DIR"):\$PATH $fast_env; cd $(printf '%q' "$REMOTE_DIR") && { ${FETCH_CMD}${SETUP_CMD} $(printf '%q ' "${args[@]}"); } 2>&1 | tee -a $(printf '%q' "$REMOTE_LOG")"
+cmd="export PATH=$(printf '%q' "$PY_SHIM_DIR"):\$PATH $fast_env; cd $(printf '%q' "$STRATA_HOME") && { ${FETCH_CMD}${SETUP_CMD} $(printf '%q ' "${args[@]}"); } 2>&1 | tee -a $(printf '%q' "$REMOTE_LOG")"
 cmd+="; echo $(printf '%q' "$EXIT_MARK") | tee -a $(printf '%q' "$REMOTE_LOG"); sleep infinity"
 
 # tmux の中で動かすので、SSH が切れてもサーバーは止まらない

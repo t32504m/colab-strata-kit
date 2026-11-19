@@ -18,9 +18,9 @@ $script:requestedStart=($StartOnOpen -or !$NoAutoStart) -and !$Preview
 $script:leasePath=Join-Path $StateRoot 'lease.json'; $script:guard=$null; $script:lastHealth=$null
 $cfg=Read-LaunchSettings
 $script:lease=@{ownerPid=$PID;ownerStartTicks=(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks;runId=[guid]::NewGuid().ToString();armed=$true;requestStop=$false;deadlineUtc=$null;idleMinutes=[int]$cfg.IdleMinutes;lastActiveUtc=[DateTime]::UtcNow.ToString('o');cuBudget=[double]$cfg.Budget;balanceAtStart=$null}
-$form=[Windows.Forms.Form]::new(); $form.Text='Colab Manager — Strata'; $form.Size=[Drawing.Size]::new(1050,810);$form.MinimumSize=[Drawing.Size]::new(960,760);$form.StartPosition='CenterScreen'
+$form=[Windows.Forms.Form]::new(); $form.Text='Colab Manager — Strata'; $form.Size=[Drawing.Size]::new(1480,810);$form.MinimumSize=[Drawing.Size]::new(1300,760);$form.StartPosition='CenterScreen'
 $form.BackColor=[Drawing.ColorTranslator]::FromHtml('#111827'); $form.ForeColor=[Drawing.Color]::WhiteSmoke; $form.Font=[Drawing.Font]::new('Yu Gothic UI',10)
-function LabelAt($text,$x,$y,$w,$h,$size=10) {$c=[Windows.Forms.Label]::new();$c.Text=$text;$c.SetBounds($x,$y,$w,$h);$c.Font=[Drawing.Font]::new('Yu Gothic UI',$size);$form.Controls.Add($c);return $c}
+function LabelAt($text,$x,$y,$w,$h,$size=10) {if($x -lt 890 -and $x+$w -gt 880){$w=880-$x};$c=[Windows.Forms.Label]::new();$c.Text=$text;$c.SetBounds($x,$y,$w,$h);$c.Font=[Drawing.Font]::new('Yu Gothic UI',$size);$form.Controls.Add($c);return $c}
 function ButtonAt($text,$x,$y,$w,$color='#334155') {$c=[Windows.Forms.Button]::new();$c.Text=$text;$c.SetBounds($x,$y,$w,38);$c.FlatStyle='Flat';$c.FlatAppearance.BorderSize=0;$c.BackColor=[Drawing.ColorTranslator]::FromHtml($color);$c.ForeColor=[Drawing.Color]::White;$form.Controls.Add($c);return $c}
 function ComboAt($values,$value,$x,$y,$w) {$c=[Windows.Forms.ComboBox]::new();$c.DropDownStyle='DropDownList';$c.SetBounds($x,$y,$w,32);$c.Items.AddRange([object[]]$values);$c.SelectedItem=[string]$value;$form.Controls.Add($c);return $c}
 function CheckAt($text,$value,$x,$y,$w) {$c=[Windows.Forms.CheckBox]::new();$c.Text=$text;$c.Checked=$value;$c.SetBounds($x,$y,$w,30);$form.Controls.Add($c);return $c}
@@ -41,16 +41,16 @@ $high=CheckAt 'High-memory を要求' $cfg.HighMemory 572 344 230
 $null=LabelAt 'VRAM容量は起動後に実測表示。稼働中は起動設定を変更できません。' 26 384 960 24
 $mtp=CheckAt 'MTPを使う（通常はこちら）' $cfg.MTP 26 414 300
 $vision=CheckAt '画像入力を使う' $cfg.Vision 340 414 200
-$showCommands=CheckAt '実行コマンドを表示' $false 680 414 290
+$showCommands=CheckAt '実行コマンドを表示' $false 680 414 200
 $null=LabelAt 'MTPを外すと初回の追加取得・変換を省けますが、生成速度が下がる場合があります。' 26 448 960 24
 $null=LabelAt '起動後に開く' 26 489 110 25;$harness=ComboAt @('DeepSeek Harness','DeepSeek Harness + WebUI','Pi','Strata WebUI') $cfg.Harness 147 484 200
 $auto=CheckAt '準備できたら自動で開く' $cfg.AutoOpen 369 484 265;$open=ButtonAt '選択した画面を開く' 672 480 200
 $null=LabelAt '無操作で停止（分）' 26 532 165 25;$minutes=NumberAt $cfg.IdleMinutes 5 720 197 528 85
 $null=LabelAt 'CU減少上限（0＝無効）' 314 532 205 25;$budget=NumberAt $cfg.Budget 0 1000 528 528 85;$budget.DecimalPlaces=1;$budget.Increment=0.5
 $limits=ButtonAt 'この値を反映' 672 522 200
-$activityLabel=LabelAt 'CLI実行ログ（表示専用・コマンド入力不可）／状態の更新を待っています' 26 568 970 24
-$log=[Windows.Forms.TextBox]::new();$log.Multiline=$true;$log.ReadOnly=$true;$log.ScrollBars='Vertical';$log.BackColor=[Drawing.ColorTranslator]::FromHtml('#020617');$log.ForeColor=[Drawing.ColorTranslator]::FromHtml('#cbd5e1');$log.Font=[Drawing.Font]::new('Consolas',9);$log.SetBounds(26,609,972,120);$log.Anchor='Top,Bottom,Left,Right';$form.Controls.Add($log)
-$footer=LabelAt '×で閉じるとColabも停止します。停止確認に失敗した場合は再試行します。' 26 740 970 24;$footer.Anchor='Bottom,Left,Right'
+$activityLabel=LabelAt 'CLI実行ログ（表示専用・コマンド入力不可）／状態の更新を待っています' 900 17 556 24;$activityLabel.Anchor='Top,Left,Right'
+$log=[Windows.Forms.TextBox]::new();$log.Multiline=$true;$log.ReadOnly=$true;$log.ScrollBars='Vertical';$log.BackColor=[Drawing.ColorTranslator]::FromHtml('#020617');$log.ForeColor=[Drawing.ColorTranslator]::FromHtml('#cbd5e1');$log.Font=[Drawing.Font]::new('Consolas',9);$log.SetBounds(900,45,556,700);$log.Anchor='Top,Bottom,Left,Right';$form.Controls.Add($log)
+$footer=LabelAt '×で閉じるとColabも停止します。停止確認に失敗した場合は再試行します。' 26 740 850 24;$footer.Anchor='Bottom,Left'
 $handler=[Net.Http.HttpClientHandler]::new();$handler.UseProxy=$false
 $http=[Net.Http.HttpClient]::new($handler);$http.Timeout=[TimeSpan]::FromSeconds(3)
 function Current-Settings {return @{Context=[int]$context.SelectedItem;Model=[string]$model.SelectedItem;HighMemory=$high.Checked;MTP=$mtp.Checked;Vision=$vision.Checked;Harness=[string]$harness.SelectedItem;AutoOpen=$auto.Checked;IdleMinutes=[int]$minutes.Value;Budget=[double]$budget.Value}}

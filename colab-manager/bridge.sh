@@ -9,7 +9,7 @@ source "$BASE/lib/common.sh"
 export NO_COLOR=1
 export TERM=dumb
 # Manager から呼ばれると画面が無く、colab（rich）が幅を 1 と見て、エラーを1文字ずつ改行して書く（2026-11-17）
-export COLUMNS=200 LINES=50
+export COLUMNS=80 LINES=50   # Manager のログ欄（右側、約 80 文字）に合わせる
 # A100 が空いていない（assign が Service Unavailable）ときに、待ってやり直す回数と間隔。ランタイムは作られないので CU はかからない
 ASSIGN_TRIES="${ASSIGN_TRIES:-10}"
 ASSIGN_WAIT_SEC="${ASSIGN_WAIT_SEC:-60}"
@@ -144,7 +144,9 @@ case "${1:-}" in
         rm -f "$newlog"
         [[ $busy == 1 && $try -lt $ASSIGN_TRIES ]] || exit "$rc"
         # 割り当てが本当に無いことを確かめてから待つ（作られていれば、そのまま使う）
-        s="$(state)"
+        # 失敗の直後は、Manager の定期の状態確認と重なって 45 秒を超えることがある（2026-11-17 21:38）。3 回まで確かめる
+        s=unknown
+        for k in 1 2 3; do s="$(state)"; [[ "$s" != unknown ]] && break; cancel_check; sleep 10; done
         [[ "$s" == present ]] && break
         [[ "$s" == absent ]] || { echo 'Cannot establish runtime state.' >&2; exit 3; }
         echo "[manager] A100 is busy on Colab (Service Unavailable). Waiting ${ASSIGN_WAIT_SEC}s, then retry $((try+1))/$ASSIGN_TRIES (no runtime, no CU)."
@@ -188,7 +190,12 @@ case "${1:-}" in
         capture_log
         status="$(remote_poll || true)"
         echo "[manager] $status"
-        [[ "$status" != EXITED && "$status" != NOT_RUNNING && "$status" != PORT_IN_USE ]] || exit 6
+        if [[ "$status" == EXITED || "$status" == NOT_RUNNING || "$status" == PORT_IN_USE ]]; then
+          # 止める前に、Colab 側の setup のログの最後を残す（ランタイムを止めると消えるため。2026-11-19 は理由が分からなかった）
+          echo "[manager] setup log (last 30 lines):"
+          timeout 20 ssh -n "${SSH_OPTS[@]}" "$SSH_HOST" "tail -n 30 $(printf '%q' "$REMOTE_LOG")" 2>/dev/null | tr '\r' '\n' | sed 's/^/  | /' || true
+          exit 6
+        fi
         (( SECONDS < deadline )) || { echo 'Startup timeout.' >&2; exit 7; }
         sleep 15
       done

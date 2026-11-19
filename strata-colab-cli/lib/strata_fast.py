@@ -139,6 +139,7 @@ class Plan:
         self.early: list[Item] = []      # at once, beside the first shard
         self.later: list[Item] = []      # when their conditions hold (the MTP items, see Prefetch._mtp)
         self.llama: Path | None = None   # llama.cpp's source folder (gguf-py for the MTP conversion)
+        self.own_gguf = False            # 0.2.16+: the MTP tools write GGUF with Strata's own tools/strata_gguf.py, no llama.cpp
         # where this version's converted draft layer is cached: "hf://<owner>/<repo>/mtp-rt/<key>" (a private Hugging Face
         # repo) or a folder on the mounted Google Drive
         self.mtp_cache: str | None = None
@@ -210,7 +211,9 @@ def make_plan(m, args: list[str]) -> Plan:
             plan.later.append(Item("mtp", "mtp", mtp))
             tools = Path(m.ROOT) / "tools" if hasattr(m, "ROOT") else None
             if tools and (tools / "mtp_pack.py").is_file() and (tools / "mtp_rt.py").is_file():
-                plan.llama = (m.home() if hasattr(m, "home") else Path(m.ROOT)) / "third_party" / "llama.cpp"
+                plan.own_gguf = own_gguf(tools)
+                if not plan.own_gguf:
+                    plan.llama = (m.home() if hasattr(m, "home") else Path(m.ROOT)) / "third_party" / "llama.cpp"
                 plan.later.append(Item("mtpconv", "mtp-convert", mtp))
                 plan.mtp_cache = cache_location(m, tools)
                 if plan.mtp_cache:
@@ -245,12 +248,19 @@ def cache_location(m, tools: Path) -> str | None:
     return None
 
 
+def own_gguf(tools: Path) -> bool:
+    """0.2.16 and later: tools/_paths.py gives the MTP tools Strata's own GGUF writer (tools/strata_gguf.py), so the
+    conversion needs no llama.cpp source (2026-11-19: waiting for llama.cpp skipped the early conversion: 246 s more)."""
+    return (tools / "_paths.py").is_file() and (tools / "strata_gguf.py").is_file()
+
+
 def mtp_cache_key(m, tools: Path) -> str:
     """What the converted draft layer depends on: the three MTP tools (the pinned checkpoint revision is in mtp_fetch.py),
     the expert format and llama.cpp's commit (its gguf-py writes the intermediate GGUF). Another version: another folder."""
     import hashlib
     h = hashlib.sha256(b"strata-colab mtp-rt v1\nq2_0\n")
-    for name in ("mtp_fetch.py", "mtp_pack.py", "mtp_rt.py"):
+    names = ("mtp_fetch.py", "mtp_pack.py", "mtp_rt.py") + (("_paths.py", "strata_gguf.py") if own_gguf(tools) else ())
+    for name in names:
         p = tools / name
         h.update(name.encode() + b"\n" + (p.read_bytes() if p.is_file() else b"-"))
     h.update(str(getattr(m, "LLAMA_CPP_COMMIT", "")).encode())
@@ -288,6 +298,8 @@ class Prefetch:
             pass
 
     def _llama_ready(self) -> bool:
+        if self.plan.own_gguf:                       # nothing to wait for: the tools carry their own GGUF writer
+            return True
         ll = self.plan.llama
         return ll is not None and (ll / "ggml" / "CMakeLists.txt").exists() and (ll / "gguf-py").is_dir()
 
@@ -1141,8 +1153,10 @@ def convert_mtp(m, mtp: Path) -> int:
     moved into place only when both succeeded, so setup.py never sees half a draft layer (it checks mtp/rt/experts.bin)."""
     import shutil
     root = Path(m.ROOT)
-    llama = (m.home() if hasattr(m, "home") else root) / "third_party" / "llama.cpp"
-    env = dict(os.environ, STRATA_GGUF_PY=str(llama / "gguf-py"), STRATA_EXIT_WITH_PARENT="1")
+    env = dict(os.environ, STRATA_EXIT_WITH_PARENT="1")
+    if not own_gguf(root / "tools"):                 # older Strata: llama.cpp's gguf-py, as setup.py passes it
+        llama = (m.home() if hasattr(m, "home") else root) / "third_party" / "llama.cpp"
+        env["STRATA_GGUF_PY"] = str(llama / "gguf-py")
     tmp = mtp.parent / ".mtp-fast-convert"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
