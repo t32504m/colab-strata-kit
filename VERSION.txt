@@ -1,4 +1,4 @@
-built 2026-11-19 20:21
-colab-manager e2196ef (master)
-strata-colab-cli 0a90db1 (faster-colab-startup)
+built 2026-11-19 20:31
+colab-manager 0c45b86 (master)
+strata-colab-cli 006b324 (faster-colab-startup)
 delegation 1f961f0 (master)
